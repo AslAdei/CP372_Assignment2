@@ -1,0 +1,13 @@
+This is a test file for the DS-FTP assignment.
+It is used to demonstrate Stop-and-Wait and Go-Back-N file transfers
+over UDP using the custom protocol.
+
+Each line in this file simulates data that would be transmitted
+from a Mars Rover to an Earth Station.
+Hello hEllo how are ya sisteer 
+
+0123456789
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+abcdefghijklmnopqrstuvwxyz
+End of test file.
+s292-01 
