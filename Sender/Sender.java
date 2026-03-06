@@ -50,13 +50,19 @@ public class Sender {
         // ---- PHASE 2: DATA TRANSFER ----
         if (fileBytes.length == 0) {
             DSPacket eot = new DSPacket(DSPacket.TYPE_EOT, 1, new byte[0]);
-
+            
             if (!sendUntilAck(sendSocket, ackSocket, eot, rcvIP, rcvPort, 1)) {
                 sendSocket.close();
                 ackSocket.close();
                 return;
             }
-        }
+
+            long endTime = System.currentTimeMillis();
+            System.out.printf("Total Transmission Time: %.2f seconds%n", (endTime - startTime) / 1000.0);
+
+            sendSocket.close();
+            ackSocket.close();
+            return;
         
         } else if (!useGBN) {
             int seq = 1;
