@@ -26,7 +26,7 @@ public class Receiver {
 
         int expectedSeq = 0;
         int ackCount = 0;
-        Map<Integer, DSPacket> buffer = new TreeMap<>(); // GBN buffering
+        Map<Integer, DSPacket> buffer = new HashMap<>(); // stores out-of-order DATA packets
 
         System.out.println("Receiver started on port " + rcvPort);
 
@@ -44,46 +44,43 @@ public class Receiver {
 
             System.out.println("Received packet: type=" + type + " seq=" + seq);
 
-            if (type == DSPacket.TYPE_SOT) {
+            if (type == DSPacket.TYPE_SOT && seq == 0) {
+                expectedSeq = 1;
+                buffer.clear();
+
                 ackCount++;
                 if (!ChaosEngine.shouldDrop(ackCount, RN)) {
-                    sendACK(seq, senderIP, senderAckPort, ackSocket);
-                    System.out.println("Sent SOT ACK for seq=" + seq);
+                    sendACK(0, senderIP, senderAckPort, ackSocket);
+                    System.out.println("Sent SOT ACK for seq=0");
                 }
-                expectedSeq = 1; // first DATA seq
-            } 
+            }
             else if (type == DSPacket.TYPE_DATA) {
+                int receiverWindow = 128; // safest practical choice since receiver CLI does not include window_size
+
                 if (seq == expectedSeq) {
                     fos.write(pkt.getPayload(), 0, pkt.getLength());
                     expectedSeq = (expectedSeq + 1) % 128;
 
-                    // Deliver buffered packets in order
                     while (buffer.containsKey(expectedSeq)) {
                         DSPacket p = buffer.remove(expectedSeq);
                         fos.write(p.getPayload(), 0, p.getLength());
                         expectedSeq = (expectedSeq + 1) % 128;
                     }
-
-                    ackCount++;
-                    if (!ChaosEngine.shouldDrop(ackCount, RN)) {
-                        int ackSeq = (expectedSeq - 1 + 128) % 128;
-                        sendACK(ackSeq, senderIP, senderAckPort, ackSocket);
-                        System.out.println("Sent ACK for seq=" + ackSeq);
-                    }
-                } else {
+                } else if (inWindow(seq, expectedSeq, receiverWindow)) {
                     if (!buffer.containsKey(seq)) {
                         buffer.put(seq, pkt);
                         System.out.println("Buffered out-of-order packet seq=" + seq);
                     }
-
-                    ackCount++;
-                    if (!ChaosEngine.shouldDrop(ackCount, RN)) {
-                        int ackSeq = (expectedSeq - 1 + 128) % 128;
-                        sendACK(ackSeq, senderIP, senderAckPort, ackSocket);
-                        System.out.println("Sent cumulative ACK for seq=" + ackSeq);
-                    }
                 }
-            } 
+                // else: packet is below/above the receive window, so discard it
+
+                ackCount++;
+                if (!ChaosEngine.shouldDrop(ackCount, RN)) {
+                    int ackSeq = lastInOrder(expectedSeq);
+                    sendACK(ackSeq, senderIP, senderAckPort, ackSocket);
+                    System.out.println("Sent cumulative ACK for seq=" + ackSeq);
+                }
+            }
             else if (type == DSPacket.TYPE_EOT) {
                 ackCount++;
                 if (!ChaosEngine.shouldDrop(ackCount, RN)) {
@@ -105,5 +102,13 @@ public class Receiver {
         byte[] data = ack.toBytes();
         DatagramPacket dp = new DatagramPacket(data, data.length, ip, port);
         sock.send(dp);
+    }
+
+    private static boolean inWindow(int seq, int expectedSeq, int windowSize) {
+        return ((seq - expectedSeq + 128) % 128) < windowSize;
+    }
+
+    private static int lastInOrder(int expectedSeq) {
+        return (expectedSeq - 1 + 128) % 128;
     }
 }
